@@ -1,0 +1,473 @@
+// My values: 85 = (0)1010101   IS 0 = 00000000
+//106 = (0)1101010 IS 7 = (0)111
+// 102 = 01100110 IS 5 = 0101
+//01 = 0   10 = 1
+
+//5 Message sensor:
+//AA AA AA AA 55 05 DC 2F 00 00 0A
+//9999 9999 9999 9999 66  66 = NOT RECEIVED
+//55 66 A6 A5 59 AA 55 55 55 55 55 99
+//
+//
+
+//7 Message sensor:
+//AA AA AA AA 55 07 16 05 03 40 00 00 31 CE
+//9999 9999 9999 9999 66  66
+//55 6A 56 69 55 66 55 5A 65 55 55 55 55 55 5A 56 A5 A9
+/***** Includes *****/
+
+/* Standard C Libraries */
+#include<stdio.h>
+#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <String.h>
+
+/* TI Drivers */
+#include <ti/drivers/rf/RF.h>
+#include <ti/drivers/PIN.h>
+#include <ti/drivers/GPIO.h>
+#include <ti/drivers/SD.h>
+#include <ti/drivers/UART.h>
+#include <ti/sysbios/hal/Seconds.h>
+
+/* Driverlib Header files */
+#include DeviceFamily_constructPath(driverlib/rf_prop_mailbox.h)
+
+/* FatFS SD card libraries*/
+#include <third_party/fatfs/ff.h>
+#include <third_party/fatfs/diskio.h>
+#include <third_party/fatfs/ffcio.h>
+#include <third_party/fatfs/ffconf.h>
+#include "ti/drivers/SDFatFS.h"
+#include <ti/drivers/SD.h>
+
+/* Example/Board Header files */
+#include "Board.h"
+
+/* Application Header files */
+#include "RFQueue.h"
+#include "smartrf_settings/smartrf_settings.h"
+
+/* BIOS Header files */
+#include <ti/sysbios/BIOS.h>
+#include <ti/sysbios/knl/Semaphore.h>
+#include <ti/sysbios/knl/Task.h>
+
+
+/* Custom header files */
+#include <CRC8.h>
+#include <Manchester.h>
+#include <UnpackPayload.h>
+#include <GetAndSetData.H>
+#include <EpochSet.H>
+
+/* Fatfs defines */
+
+FIL fsrc; /* File objects */
+FRESULT fr; /* FatFs function common result code */
+UINT bw; /* File read/write count */
+
+/* RF Defines */
+
+/* Packet RX Configuration */
+#define DATA_ENTRY_HEADER_SIZE 9  /* Constant header size of a Generic Data Entry */
+#define MAX_LENGTH             19 /* Max length byte the radio will accept */
+#define NUM_DATA_ENTRIES       2  /* NOTE: Only two data entries supported at the moment */
+#define NUM_APPENDED_BYTES     2  /* The Data Entries data field will contain:
+                                   * 1 Header byte (RF_cmdPropRx.rxConf.bIncludeHdr = 0x1)
+                                   * Max 30 payload bytes
+                                   * 1 status byte (RF_cmdPropRx.rxConf.bAppendStatus = 0x1) */
+
+/***** Prototypes *****/
+static void callback(RF_Handle h, RF_CmdHandle ch, RF_EventMask e);
+
+/***** Variable declarations *****/
+static RF_Object rfObject;
+static RF_Handle rfHandle;
+
+/* Buffer which contains all Data Entries for receiving data.
+ * Pragmas are needed to make sure this buffer is 4 byte aligned (requirement from the RF Core) */
+#if defined(__TI_COMPILER_VERSION__)
+#pragma DATA_ALIGN (rxDataEntryBuffer, 4);
+static uint8_t rxDataEntryBuffer[RF_QUEUE_DATA_ENTRY_BUFFER_SIZE(
+        NUM_DATA_ENTRIES, MAX_LENGTH, NUM_APPENDED_BYTES)];
+
+#elif defined(__IAR_SYSTEMS_ICC__)
+#pragma data_alignment = 4
+static uint8_t
+rxDataEntryBuffer[RF_QUEUE_DATA_ENTRY_BUFFER_SIZE(NUM_DATA_ENTRIES,
+                                                  MAX_LENGTH,
+                                                  NUM_APPENDED_BYTES)];
+#elif defined(__GNUC__)
+static uint8_t
+rxDataEntryBuffer[RF_QUEUE_DATA_ENTRY_BUFFER_SIZE(NUM_DATA_ENTRIES,
+                                                  MAX_LENGTH,
+                                                  NUM_APPENDED_BYTES)]
+                                                  __attribute__((aligned(4)));
+#else
+#error This compiler is not supported.
+#endif
+
+/* Receive dataQueue for RF Core to fill in data */
+static dataQueue_t dataQueue;
+static rfc_dataEntryGeneral_t *currentDataEntry;
+static uint8_t packetLength;
+static uint8_t *packetDataPointer;
+
+/* packet to store received bytes in*/
+static uint8_t packet[MAX_LENGTH + NUM_APPENDED_BYTES - 1]; /* The length byte is stored in a separate variable */
+
+/* Custom raw and decoded payloads */
+uint8_t payload[19];
+uint8_t decoded[MAX_LENGTH];
+
+/* RX Semaphore */
+static Semaphore_Struct rxSemaphore;
+static Semaphore_Handle rxSemaphoreHandle;
+/* END of RF definitions */
+static time_t t1;
+void init_uart();
+void init_uart()
+{
+
+    /* UART defines and init */
+
+
+
+//    char input;
+//    uint8_t epocharray[4];
+//    uint32_t epoch = 0;
+//    GPIO_init();
+//    UART_init();
+//
+//    UART_Handle uart;
+//    UART_Params uartParams;
+//
+//    /* Create a UART with data processing off. */
+//    UART_Params_init(&uartParams);
+//    uartParams.writeDataMode = UART_DATA_BINARY;
+//    uartParams.readDataMode = UART_DATA_BINARY;
+//    uartParams.readReturnMode = UART_RETURN_FULL;
+//    uartParams.readEcho = UART_ECHO_OFF;
+//    uartParams.baudRate = 115200;
+//    uart = UART_open(Board_UART0, &uartParams);
+//
+//    if (uart == NULL)
+//    {
+//        /* UART_open() failed */
+//        while (1)
+//            ;
+//    }
+//
+//    /* UART_read halts until it gets the expected input from UART.*/
+//    int i = 0;
+//    for (i = 0; i < 4; i++)
+//    {
+//        /* input from python script is epoch in 4 bytes. Read and process byte by byte*/
+//        UART_read(uart, &input, 1);
+//        UART_write(uart, &input, 1);
+//        UART_write(uart, "\n", 1);
+//
+//        epocharray[i] = 0;
+//        epocharray[i] ^= input;
+//        /* Bytes are in big indian, shift every byte in the uint32_t. */
+//        epoch ^= epocharray[i];
+//
+//        if (i < 3)
+//        {
+//            /* don't shift the 4th byte*/
+//            epoch <<= 8;
+//        }
+//    }
+//    /*set the epoch as current seconds*/
+//    Seconds_set(1653743662); or epoch
+//    UART_close(uart);
+
+}
+
+
+
+
+void* mainThread(void *arg0)
+{
+    RF_Params rfParams;
+    RF_Params_init(&rfParams);
+
+    /* Initialize RX semaphore */
+    Semaphore_construct(&rxSemaphore, 0, NULL);
+    rxSemaphoreHandle = Semaphore_handle(&rxSemaphore);
+
+    uint32_t epoch = getEpoch();
+    Seconds_set(epoch);
+
+    GPIO_toggle(Board_GPIO_RLED);
+    CPUdelay(1000 * (10000));
+    GPIO_toggle(Board_GPIO_RLED);
+   // Seconds_set(1651541502);
+
+    SDFatFS_Handle sd_handle;
+    SDFatFS_init();
+
+    /* INIT spi with SD card libs */
+    sd_handle = SDFatFS_open(Board_SD0, 0);
+    if (sd_handle == NULL)
+    {
+        while (1)
+            ;
+    }
+
+    if (RFQueue_defineQueue(&dataQueue, rxDataEntryBuffer,
+                            sizeof(rxDataEntryBuffer),
+                            NUM_DATA_ENTRIES,
+                            MAX_LENGTH + NUM_APPENDED_BYTES))
+    {
+        /* Failed to allocate space for all data entries */
+        while (1)
+            ;
+    }
+
+    /* Modify CMD_PROP_RX command for application needs */
+
+    /* Set the Data Entity queue for received data */
+    RF_cmdPropRx.pQueue = &dataQueue;
+    /* Discard ignored packets from Rx queue */
+    RF_cmdPropRx.rxConf.bAutoFlushIgnored = 1;
+    /* Implement packet length filtering to avoid PROP_ERROR_RXBUF */
+    RF_cmdPropRx.maxPktLen = MAX_LENGTH;
+    RF_cmdPropRx.pktConf.bRepeatOk = 1;
+    RF_cmdPropRx.pktConf.bRepeatNok = 1;
+
+    /* Request access to the radio */
+#if defined(DeviceFamily_CC26X0R2)
+    rfHandle = RF_open(&rfObject, &RF_prop, (RF_RadioSetup*)&RF_cmdPropRadioSetup, &rfParams);
+#else
+    rfHandle = RF_open(&rfObject, &RF_prop,
+                       (RF_RadioSetup*) &RF_cmdPropRadioDivSetup, &rfParams);
+#endif// DeviceFamily_CC26X0R2
+
+
+    /* OPEN/CREATE file on sd card
+     * TODO: Move SD card functions to lib
+     */
+
+    fr = f_open(&fsrc, "test.txt", FA_OPEN_EXISTING | FA_WRITE);
+
+    switch (fr)
+    {
+    case FR_NO_FILE:
+        fr = f_open(&fsrc, "test.txt", FA_CREATE_NEW | FA_WRITE);
+        break;
+
+    default:
+        break;
+    }
+    if (fr != 0)
+    {
+        while (1)
+            ;
+    }
+
+    /* Close open files */
+    fr = f_close(&fsrc);
+
+;
+
+    //TODO: Opschonen code, in functies gooien waar nodig.
+    //TODO: GIT PYTHON EN DIT
+
+
+    /* Set the frequency */
+    RF_postCmd(rfHandle, (RF_Op*) &RF_cmdFs, RF_PriorityNormal, NULL, 0);
+
+    /* Enter RX mode and stay forever in RX */
+    RF_postCmd(rfHandle, (RF_Op*) &RF_cmdPropRx, RF_PriorityNormal, &callback,
+    RF_EventRxEntryDone);
+
+    GPIO_toggle(Board_GPIO_RLED);
+       CPUdelay(1000 * (10000));
+       GPIO_toggle(Board_GPIO_RLED);
+       CPUdelay(1000 * (10000));
+       GPIO_toggle(Board_GPIO_RLED);
+          CPUdelay(1000 * (10000));
+          GPIO_toggle(Board_GPIO_RLED);
+    while (1)
+    {
+
+        Semaphore_pend(rxSemaphoreHandle, BIOS_WAIT_FOREVER);
+
+        uint32_t idReturned = 0;
+        double calculatedData = 0;
+        uint8_t resultCrc = 0;
+        uint8_t LENGTH = 0;
+        uint8_t c = 0;
+
+
+        for (c = 0; c < 19; c++)
+        {
+            /* Decode manchester byte by byte */
+            payload[c] = manDecode(packet[c]);
+        }
+
+        /* Shift bits into LENGTH variable to find out which type of packet it is */
+        LENGTH |= payload[0];
+        LENGTH <<= 4;
+        LENGTH |= payload[1];
+
+        GPIO_toggle(Board_GPIO_RLED);
+
+        /* If the received RF packet is length 5*/
+        if (LENGTH == 5)
+        {
+            /* Get payload into needed format to do CRC check */
+            resultCrc = unpackFiveCRC(payload);
+
+            /* Result of CRC */
+            if (resultCrc != 1)
+            {
+                /* If CRC is nOK
+                 * TODO: Add error cases with corresponding blinky LEDS
+                 * For now Crc nOk is just ignored. */
+                // while (1);
+
+            }
+            if(resultCrc == 1)
+            {
+
+
+            /* get time */
+            t1 = time(NULL);
+
+            /* put result in t struct */
+            struct tm t = *localtime(&t1);
+
+            /* Change to correct date and time */
+            uint8_t sec = t.tm_sec;
+            uint8_t hour = t.tm_hour + 2;
+            uint8_t min = t.tm_min;
+            uint8_t month = t.tm_mon + 1;
+            uint16_t year = t.tm_year + 1900;
+            uint8_t day = t.tm_mday;
+
+            /* If CRC is ok, calculate data */
+            calculatedData = calculateFive();
+
+
+
+            /* TODO: make getters for filename so user can customize filename. For test purposes files are named TEST.txt
+             * TODO: Make getter for timestamp so it can be removed from main
+             * TODO: Make getter for ID in corresponding lib. For now it is called getIDTemp as it is a temporary function.
+             */
+
+
+            /*Get file name*/
+            //char sourceFile = getFileName();
+
+            /*Get Time and date */
+            //char timeStamp = getTimeStamp();
+
+            /* get ID, data type and unit*/
+            idReturned = getIdTemp();
+
+            String type = getType();
+            String unit = getUnit();
+
+            char bufferToSD[100];
+            int cx;
+
+            /*Open file*/
+            fr = f_open(&fsrc, "test.txt", FA_OPEN_APPEND | FA_WRITE);
+
+            /* Write JSON to buffer
+             * TODO: PCB halts when trying to write double (%0.2f). Figure out solution
+             * */
+
+            cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Value\":%0.2f\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,", idReturned,calculatedData,unit, type, year,month,day,hour,min,sec);
+           // cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,", idReturned,unit, type, year,month,day,hour,min,sec);
+
+            /*Write buffer to file and close */
+            fr = f_write(&fsrc, bufferToSD, cx, &bw);
+            fr = f_close(&fsrc);
+
+            }
+        }
+
+        /* If the received RF packet is length 7*/
+        if (LENGTH == 7)
+        {
+            resultCrc = unpackSevenCRC(payload);
+
+            /* Result of CRC */
+            if (resultCrc != 1)
+            {
+                //while (1);
+            }
+
+            if(resultCrc == 1)
+            {
+                /* get time */
+                      t1 = time(NULL);
+
+                      /* put result in t struct */
+                      struct tm t = *localtime(&t1);
+
+                      /* Change to correct date and time */
+                      uint8_t sec = t.tm_sec;
+                      uint8_t hour = t.tm_hour + 2;
+                      uint8_t min = t.tm_min;
+                      uint8_t month = t.tm_mon + 1;
+                      uint16_t year = t.tm_year + 1900;
+                      uint8_t day = t.tm_mday;
+
+            /* If CRC is ok, calculate data */
+            calculatedData = calculateSeven();
+            String type = getType();
+            String unit = getUnit();
+            idReturned = getIdTemp();
+
+            char bufferToSD[100];
+            int cx;
+
+            /*Open file*/
+            fr = f_open(&fsrc, "test.txt", FA_OPEN_APPEND | FA_WRITE);
+
+            /* Write JSON to buffer */
+            cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Value\":%0.2f\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,", idReturned,calculatedData,unit, type, year,month,day,hour,min,sec);
+
+            /*Write buffer to file and close */
+            fr = f_write(&fsrc, bufferToSD, cx, &bw);
+            fr = f_close(&fsrc);
+            }
+        }
+
+    }
+
+}
+
+void callback(RF_Handle h, RF_CmdHandle ch, RF_EventMask e)
+{
+    if (e & RF_EventRxEntryDone)
+    {
+
+        /* Get current unhandled data entry */
+        currentDataEntry = RFQueue_getDataEntry();
+
+        /* Handle the packet data, located at &currentDataEntry->data:
+         * - Length is fixed
+         * - Data starts from the second byte */
+        packetLength = 19;
+        packetDataPointer = (uint8_t*) (&currentDataEntry->data + 1);
+
+        /* Copy the payload + the status byte to the packet variable */
+        memcpy(packet, packetDataPointer, (packetLength + 1));
+
+        /* get next entry */
+        RFQueue_nextEntry();
+
+        /*Post semaphore to start packet processing */
+        Semaphore_post(rxSemaphoreHandle);
+    }
+}

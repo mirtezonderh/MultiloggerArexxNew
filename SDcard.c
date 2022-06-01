@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <SDcard.h>
 #include <time.h>
-
+#include "ErrorBlinkyCases.H"
 #include <ti/drivers/GPIO.h>
 #include <ti/drivers/SD.h>
 #include <ti/display/Display.h>
@@ -21,6 +21,7 @@ FRESULT fr; /* FatFs function common result code */
 UINT bw; /* File read/write count */
 
 
+/*This function can be ignored. The FatFS lib requires the user to implement this function themselves.*/
 
 int32_t fatfs_getFatTime(void)
 {
@@ -28,20 +29,11 @@ int32_t fatfs_getFatTime(void)
     uint32_t fatTime;
     struct tm *pTime;
 
-    /*
-     *  TI time() returns seconds elapsed since 1900, while other tools
-     *  return seconds from 1970.  However, both TI and GNU localtime()
-     *  sets tm tm_year to number of years since 1900.
-     */
+
     seconds = time(NULL);
 
     pTime = localtime(&seconds);
 
-    /*
-     *  localtime() sets pTime->tm_year to number of years
-     *  since 1900, so subtract 80 from tm_year to get FAT time
-     *  offset from 1980.
-     */
     fatTime = ((uint32_t) (pTime->tm_year - 80) << 25)
             | ((uint32_t) (pTime->tm_mon) << 21)
             | ((uint32_t) (pTime->tm_mday) << 16)
@@ -52,44 +44,50 @@ int32_t fatfs_getFatTime(void)
     return ((int32_t) fatTime);
 }
 
+/* SDFatFS configurations */
 SDFatFS_Object myObj;
-SDFatFS_Config SDFatFS_config[] = { { &myObj },
-NULL };
-uint_least8_t SDFatFS_count = sizeof(SDFatFS_config) / sizeof(SDFatFS_config[0])
-        - 1;
+SDFatFS_Config SDFatFS_config[] = { { &myObj }, NULL };
+uint_least8_t SDFatFS_count = sizeof(SDFatFS_config) / sizeof(SDFatFS_config[0])- 1;
+
+
+
+
 
 void createTxtFileOnSD(uint32_t baseId)
 {
-    SD_init();
-    SDFatFS_Handle sd_handle;
-    SDFatFS_init();
+      SDFatFS_Handle sd_handle;
+      SDFatFS_init();
 
-    sd_handle = SDFatFS_open(Board_SD0, 0);
-    if (sd_handle == NULL)
-    {
-        while (1);
-    }
-    char TXTNAME[15];
-    uint32_t TXTID = baseId;
-    snprintf(TXTNAME, 15, "%d.txt", TXTID);
+      /* INIT spi with SD card libs */
+      sd_handle = SDFatFS_open(Board_SD0, 0);
+      if (sd_handle == NULL)
+      {
+          while (1)
+              ;
+          errorBlinkCase(1);
+      }
 
+      fr = f_open(&fsrc, "Log.TXT", FA_OPEN_EXISTING | FA_WRITE);
 
-    fr = f_open(&fsrc, TXTNAME, FA_OPEN_EXISTING | FA_WRITE);
-    switch (fr)
-    {
-    case FR_NO_FILE:
-        fr = f_open(&fsrc, TXTNAME, FA_CREATE_NEW | FA_WRITE);
+      switch (fr)
+      {
+      case FR_NO_FILE:
+          fr = f_open(&fsrc, "Log.TXT", FA_CREATE_NEW | FA_WRITE);
+          break;
 
-    default:
-        break;
-    }
+      default:
+          /* is ok */
+          break;
+      }
+      if (fr != 0)
+      {
+          while (1)
+              ;
+          errorBlinkCase(1);
+      }
 
-    if (fr != 0)
-    {
-        while (1);
-
-    }
-    fr = f_close(&fsrc);
+      /* Close open files */
+      fr = f_close(&fsrc);
 
 
 }
@@ -98,36 +96,7 @@ void createTxtFileOnSD(uint32_t baseId)
 void writeDataOnSD(uint32_t baseId, uint32_t sensorId, float data)
 {
 
-    char buffer[50];
-    int cx;
-    int i = 0;
-    char TXTNAME = "12345.txt";
 
-    fr = f_open(&fsrc, "test.txt", FA_OPEN_APPEND | FA_WRITE);
-
-    cx = snprintf (buffer, sizeof(buffer), "\{\"ID\":\"%d\"\,\"Data\":%0.2f\}", sensorId, data);
-
-
-
-    while(i<2)
-    {
-        fr = f_write(&fsrc, buffer, cx, &bw);
-        i++;
-    }
-    /* if writing nOk */
-    if(fr != 0)
-        {
-            while(1);
-        }
-
-    /* Try to sync */
-    fr = f_sync(&fsrc);
-    if(fr != 0)
-        {
-            while(1);
-        }
-
-    fr = f_close(&fsrc);
 
 }
 

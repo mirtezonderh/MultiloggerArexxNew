@@ -9,7 +9,7 @@
 
 /* prototypes */
 
-void createTxtFileOnSD(uint32_t baseId);
+void createTxtFileOnSD();
 void writeDataOnSD(
                    uint32_t baseId,
                    uint32_t sensorId,

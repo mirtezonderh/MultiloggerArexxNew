@@ -7,6 +7,7 @@
 
 String dataType;
 String dataUnit;
+uint32_t sensId;
 
 void setType(String type)
 {
@@ -23,4 +24,15 @@ void setUnit(String unit){
 String getUnit(){
 
     return dataUnit;
+}
+
+void setId(uint32_t ID)
+{
+    sensId = ID;
+}
+
+uint32_t getId()
+{
+
+    return sensId;
 }

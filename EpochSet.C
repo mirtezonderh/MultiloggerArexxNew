@@ -5,6 +5,7 @@
 #include <ti/drivers/UART.h>
 #include <ti/drivers/GPIO.h>
 #include "Board.h"
+#include "ErrorBlinkyCases.H"
 
 /* TODO: Uart get initialized in this function. For now this is OK but this has to be moved so the UART can be
  *       accesed in other parts of the code.
@@ -34,6 +35,7 @@ uint32_t getEpoch(){
 
      if (uart == NULL)
      {
+
          /* UART_open() failed */
          while (1)
              ;
@@ -57,6 +59,13 @@ uint32_t getEpoch(){
               }
           }
           UART_close(uart);
+          if(uart=NULL)
+          {
+              while(1)
+              {
+              errorBlinkCase(2);
+              }
+          }
 
           return epoch;
 

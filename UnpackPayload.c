@@ -95,22 +95,24 @@ double calculateFive()
     /* If last bit is 1 then data is temperature */
     if (temp_id5 == 1)
     {
-        degC = DataCalc;
+
         setType("Temp");
         setUnit("C");
 
-        return degC;
+
     }
 
     /* If last bit is 0 then data is humidity */
     else
     {
-        hum = DataCalc;
+
         setType("RH");
         setUnit("%");
-        return hum;
+
     }
 
+    setId(ID_FULL);
+    return DataCalc;
 
 
 }
@@ -284,11 +286,8 @@ double calculateSeven()
     }
     setType(type);
     setUnit(unit);
+    setId(ID_FULL);
     return DataCalc;
 
 }
 
-uint32_t getIdTemp()
-{
-  return ID_FULL;
-}

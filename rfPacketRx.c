@@ -175,8 +175,9 @@ void* mainThread(void *arg0)
     /* OPEN/CREATE file on sd card
      * TODO: Move SD card functions to lib
      */
-    uint32_t epoch = getEpoch();
-    Seconds_set(epoch);
+   // uint32_t epoch = getEpoch();
+   // Seconds_set(epoch);
+    Seconds_set(1654100815);
 
     SDFatFS_Handle sd_handle;
     SDFatFS_init();
@@ -189,12 +190,12 @@ void* mainThread(void *arg0)
             ;
     }
 
-    fr = f_open(&fsrc, "test.txt", FA_OPEN_EXISTING | FA_WRITE);
+    fr = f_open(&fsrc, "Log.TXT", FA_OPEN_EXISTING | FA_WRITE);
 
     switch (fr)
     {
     case FR_NO_FILE:
-        fr = f_open(&fsrc, "test.txt", FA_CREATE_NEW | FA_WRITE);
+        fr = f_open(&fsrc, "Log.TXT", FA_CREATE_NEW | FA_WRITE);
         break;
 
     default:
@@ -265,24 +266,33 @@ void* mainThread(void *arg0)
             }
             if(resultCrc == 1)
             {
+                /* If CRC is ok, calculate data */
+                       calculatedData = calculateFive();
+            }
+        }
+
+        /* If the received RF packet is length 7*/
+            if (LENGTH == 7)
+            {
+                resultCrc = unpackSevenCRC(payload);
+
+                /* Result of CRC */
+                if (resultCrc != 1)
+                {
+                    //while (1);
+                }
+
+                if(resultCrc == 1)
+                {
+                    calculatedData = calculateSeven();
+                }
+            }
 
 
             /* get time */
             t1 = time(NULL);
-
             /* put result in t struct */
             struct tm t = *localtime(&t1);
-
-            /* Change to correct date and time */
-            uint8_t sec = t.tm_sec;
-            uint8_t hour = t.tm_hour + 2;
-            uint8_t min = t.tm_min;
-            uint8_t month = t.tm_mon + 1;
-            uint16_t year = t.tm_year + 1900;
-            uint8_t day = t.tm_mday;
-
-            /* If CRC is ok, calculate data */
-            calculatedData = calculateFive();
 
 
 
@@ -290,13 +300,6 @@ void* mainThread(void *arg0)
              * TODO: Make getter for timestamp so it can be removed from main
              * TODO: Make getter for ID in corresponding lib. For now it is called getIDTemp as it is a temporary function.
              */
-
-
-            /*Get file name*/
-            //char sourceFile = getFileName();
-
-            /*Get Time and date */
-            //char timeStamp = getTimeStamp();
 
             /* get ID, data type and unit*/
             idReturned = getIdTemp();
@@ -308,69 +311,28 @@ void* mainThread(void *arg0)
             int cx;
 
             /*Open file*/
-            fr = f_open(&fsrc, "test.txt", FA_OPEN_APPEND | FA_WRITE);
+            fr = f_open(&fsrc, "LOG.txt", FA_OPEN_APPEND | FA_WRITE);
 
             /* Write JSON to buffer
              * TODO: PCB halts when trying to write double (%0.2f). Figure out solution
              * */
 
-            cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Value\":%0.2f\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,", idReturned,calculatedData,unit, type, year,month,day,hour,min,sec);
+            cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Value\":%0.2f\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,",
+                                                          idReturned,
+                                                          calculatedData,
+                                                          unit,
+                                                          type,
+                                                          (t.tm_year+1900),
+                                                          (t.tm_mon+1),
+                                                          t.tm_mday,
+                                                          (t.tm_hour+2),
+                                                          t.tm_min,
+                                                          t.tm_sec);
            // cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,", idReturned,unit, type, year,month,day,hour,min,sec);
 
             /*Write buffer to file and close */
             fr = f_write(&fsrc, bufferToSD, cx, &bw);
             fr = f_close(&fsrc);
-
-            }
-        }
-
-        /* If the received RF packet is length 7*/
-        if (LENGTH == 7)
-        {
-            resultCrc = unpackSevenCRC(payload);
-
-            /* Result of CRC */
-            if (resultCrc != 1)
-            {
-                //while (1);
-            }
-
-            if(resultCrc == 1)
-            {
-                /* get time */
-                      t1 = time(NULL);
-
-                      /* put result in t struct */
-                      struct tm t = *localtime(&t1);
-
-                      /* Change to correct date and time */
-                      uint8_t sec = t.tm_sec;
-                      uint8_t hour = t.tm_hour + 2;
-                      uint8_t min = t.tm_min;
-                      uint8_t month = t.tm_mon + 1;
-                      uint16_t year = t.tm_year + 1900;
-                      uint8_t day = t.tm_mday;
-
-            /* If CRC is ok, calculate data */
-            calculatedData = calculateSeven();
-            String type = getType();
-            String unit = getUnit();
-            idReturned = getIdTemp();
-
-            char bufferToSD[100];
-            int cx;
-
-            /*Open file*/
-            fr = f_open(&fsrc, "test.txt", FA_OPEN_APPEND | FA_WRITE);
-
-            /* Write JSON to buffer */
-            cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Value\":%0.2f\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,", idReturned,calculatedData,unit, type, year,month,day,hour,min,sec);
-
-            /*Write buffer to file and close */
-            fr = f_write(&fsrc, bufferToSD, cx, &bw);
-            fr = f_close(&fsrc);
-            }
-        }
 
     }
 

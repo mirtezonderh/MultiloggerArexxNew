@@ -130,65 +130,6 @@ static Semaphore_Struct rxSemaphore;
 static Semaphore_Handle rxSemaphoreHandle;
 /* END of RF definitions */
 static time_t t1;
-void init_uart();
-void init_uart()
-{
-
-    /* UART defines and init */
-
-
-
-//    char input;
-//    uint8_t epocharray[4];
-//    uint32_t epoch = 0;
-//    GPIO_init();
-//    UART_init();
-//
-//    UART_Handle uart;
-//    UART_Params uartParams;
-//
-//    /* Create a UART with data processing off. */
-//    UART_Params_init(&uartParams);
-//    uartParams.writeDataMode = UART_DATA_BINARY;
-//    uartParams.readDataMode = UART_DATA_BINARY;
-//    uartParams.readReturnMode = UART_RETURN_FULL;
-//    uartParams.readEcho = UART_ECHO_OFF;
-//    uartParams.baudRate = 115200;
-//    uart = UART_open(Board_UART0, &uartParams);
-//
-//    if (uart == NULL)
-//    {
-//        /* UART_open() failed */
-//        while (1)
-//            ;
-//    }
-//
-//    /* UART_read halts until it gets the expected input from UART.*/
-//    int i = 0;
-//    for (i = 0; i < 4; i++)
-//    {
-//        /* input from python script is epoch in 4 bytes. Read and process byte by byte*/
-//        UART_read(uart, &input, 1);
-//        UART_write(uart, &input, 1);
-//        UART_write(uart, "\n", 1);
-//
-//        epocharray[i] = 0;
-//        epocharray[i] ^= input;
-//        /* Bytes are in big indian, shift every byte in the uint32_t. */
-//        epoch ^= epocharray[i];
-//
-//        if (i < 3)
-//        {
-//            /* don't shift the 4th byte*/
-//            epoch <<= 8;
-//        }
-//    }
-//    /*set the epoch as current seconds*/
-//    Seconds_set(1653743662); or epoch
-//    UART_close(uart);
-
-}
-
 
 
 
@@ -200,25 +141,6 @@ void* mainThread(void *arg0)
     /* Initialize RX semaphore */
     Semaphore_construct(&rxSemaphore, 0, NULL);
     rxSemaphoreHandle = Semaphore_handle(&rxSemaphore);
-
-    uint32_t epoch = getEpoch();
-    Seconds_set(epoch);
-
-    GPIO_toggle(Board_GPIO_RLED);
-    CPUdelay(1000 * (10000));
-    GPIO_toggle(Board_GPIO_RLED);
-   // Seconds_set(1651541502);
-
-    SDFatFS_Handle sd_handle;
-    SDFatFS_init();
-
-    /* INIT spi with SD card libs */
-    sd_handle = SDFatFS_open(Board_SD0, 0);
-    if (sd_handle == NULL)
-    {
-        while (1)
-            ;
-    }
 
     if (RFQueue_defineQueue(&dataQueue, rxDataEntryBuffer,
                             sizeof(rxDataEntryBuffer),
@@ -253,6 +175,19 @@ void* mainThread(void *arg0)
     /* OPEN/CREATE file on sd card
      * TODO: Move SD card functions to lib
      */
+    uint32_t epoch = getEpoch();
+    Seconds_set(epoch);
+
+    SDFatFS_Handle sd_handle;
+    SDFatFS_init();
+
+    /* INIT spi with SD card libs */
+    sd_handle = SDFatFS_open(Board_SD0, 0);
+    if (sd_handle == NULL)
+    {
+        while (1)
+            ;
+    }
 
     fr = f_open(&fsrc, "test.txt", FA_OPEN_EXISTING | FA_WRITE);
 
@@ -287,13 +222,7 @@ void* mainThread(void *arg0)
     RF_postCmd(rfHandle, (RF_Op*) &RF_cmdPropRx, RF_PriorityNormal, &callback,
     RF_EventRxEntryDone);
 
-    GPIO_toggle(Board_GPIO_RLED);
-       CPUdelay(1000 * (10000));
-       GPIO_toggle(Board_GPIO_RLED);
-       CPUdelay(1000 * (10000));
-       GPIO_toggle(Board_GPIO_RLED);
-          CPUdelay(1000 * (10000));
-          GPIO_toggle(Board_GPIO_RLED);
+
     while (1)
     {
 

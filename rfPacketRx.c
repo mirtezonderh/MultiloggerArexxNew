@@ -1,19 +1,4 @@
-// My values: 85 = (0)1010101   IS 0 = 00000000
-//106 = (0)1101010 IS 7 = (0)111
-// 102 = 01100110 IS 5 = 0101
-//01 = 0   10 = 1
 
-//5 Message sensor:
-//AA AA AA AA 55 05 DC 2F 00 00 0A
-//9999 9999 9999 9999 66  66 = NOT RECEIVED
-//55 66 A6 A5 59 AA 55 55 55 55 55 99
-//
-//
-
-//7 Message sensor:
-//AA AA AA AA 55 07 16 05 03 40 00 00 31 CE
-//9999 9999 9999 9999 66  66
-//55 6A 56 69 55 66 55 5A 65 55 55 55 55 55 5A 56 A5 A9
 /***** Includes *****/
 
 /* Standard C Libraries */
@@ -45,7 +30,7 @@
 #include "ti/drivers/SDFatFS.h"
 #include <ti/drivers/SD.h>
 
-/* Example/Board Header files */
+/* Board Header files */
 #include "Board.h"
 
 /* Application Header files */
@@ -59,11 +44,13 @@
 
 
 /* Custom header files */
+#include <SDcard.h>
 #include <CRC8.h>
 #include <Manchester.h>
 #include <UnpackPayload.h>
 #include <GetAndSetData.H>
 #include <EpochSet.H>
+#include <ErrorBlinkyCases.H>
 
 /* Fatfs defines */
 
@@ -135,6 +122,7 @@ static time_t t1;
 
 void* mainThread(void *arg0)
 {
+
     RF_Params rfParams;
     RF_Params_init(&rfParams);
 
@@ -149,7 +137,9 @@ void* mainThread(void *arg0)
     {
         /* Failed to allocate space for all data entries */
         while (1)
-            ;
+        {
+            errorBlinkCase(3);
+        }
     }
 
     /* Modify CMD_PROP_RX command for application needs */
@@ -172,50 +162,13 @@ void* mainThread(void *arg0)
 #endif// DeviceFamily_CC26X0R2
 
 
-    /* OPEN/CREATE file on sd card
-     * TODO: Move SD card functions to lib
-     */
    // uint32_t epoch = getEpoch();
    // Seconds_set(epoch);
     Seconds_set(1654100815);
 
-    SDFatFS_Handle sd_handle;
-    SDFatFS_init();
+    createTxtFileOnSD();
 
-    /* INIT spi with SD card libs */
-    sd_handle = SDFatFS_open(Board_SD0, 0);
-    if (sd_handle == NULL)
-    {
-        while (1)
-            ;
-    }
-
-    fr = f_open(&fsrc, "Log.TXT", FA_OPEN_EXISTING | FA_WRITE);
-
-    switch (fr)
-    {
-    case FR_NO_FILE:
-        fr = f_open(&fsrc, "Log.TXT", FA_CREATE_NEW | FA_WRITE);
-        break;
-
-    default:
-        break;
-    }
-    if (fr != 0)
-    {
-        while (1)
-            ;
-    }
-
-    /* Close open files */
-    fr = f_close(&fsrc);
-
-;
-
-    //TODO: Opschonen code, in functies gooien waar nodig.
-    //TODO: GIT PYTHON EN DIT
-
-
+    GPIO_write(Board_GPIO_RLED,0);
     /* Set the frequency */
     RF_postCmd(rfHandle, (RF_Op*) &RF_cmdFs, RF_PriorityNormal, NULL, 0);
 
@@ -247,7 +200,8 @@ void* mainThread(void *arg0)
         LENGTH <<= 4;
         LENGTH |= payload[1];
 
-        GPIO_toggle(Board_GPIO_RLED);
+
+
 
         /* If the received RF packet is length 5*/
         if (LENGTH == 5)
@@ -258,10 +212,7 @@ void* mainThread(void *arg0)
             /* Result of CRC */
             if (resultCrc != 1)
             {
-                /* If CRC is nOK
-                 * TODO: Add error cases with corresponding blinky LEDS
-                 * For now Crc nOk is just ignored. */
-                // while (1);
+                errorBlinkCase(4);
 
             }
             if(resultCrc == 1)
@@ -279,7 +230,7 @@ void* mainThread(void *arg0)
                 /* Result of CRC */
                 if (resultCrc != 1)
                 {
-                    //while (1);
+                    errorBlinkCase(4);
                 }
 
                 if(resultCrc == 1)
@@ -296,13 +247,13 @@ void* mainThread(void *arg0)
 
 
 
-            /* TODO: make getters for filename so user can customize filename. For test purposes files are named TEST.txt
+            /* TODO: make getters for filename so user can customize filename. For test purposes files are named LOG.txt
              * TODO: Make getter for timestamp so it can be removed from main
              * TODO: Make getter for ID in corresponding lib. For now it is called getIDTemp as it is a temporary function.
              */
 
             /* get ID, data type and unit*/
-            idReturned = getIdTemp();
+            idReturned = getId();
 
             String type = getType();
             String unit = getUnit();
@@ -333,7 +284,7 @@ void* mainThread(void *arg0)
             /*Write buffer to file and close */
             fr = f_write(&fsrc, bufferToSD, cx, &bw);
             fr = f_close(&fsrc);
-
+            errorBlinkCase(5);
     }
 
 }

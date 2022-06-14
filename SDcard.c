@@ -62,9 +62,11 @@ void createTxtFileOnSD(uint32_t baseId)
       sd_handle = SDFatFS_open(Board_SD0, 0);
       if (sd_handle == NULL)
       {
-          while (1)
-              ;
-          errorBlinkCase(1);
+          while (1){
+
+              errorBlinkCase(1);
+          }
+
       }
 
       fr = f_open(&fsrc, "Log.TXT", FA_OPEN_EXISTING | FA_WRITE);
@@ -82,8 +84,10 @@ void createTxtFileOnSD(uint32_t baseId)
       if (fr != 0)
       {
           while (1)
-              ;
-          errorBlinkCase(1);
+          {
+              errorBlinkCase(1);
+          }
+
       }
 
       /* Close open files */

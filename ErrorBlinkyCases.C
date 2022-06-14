@@ -19,9 +19,9 @@ void errorBlinkCase(uint8_t blinkyCase)
     case 1:
         /* SD Card error */
         /*long red led blink*/
-        GPIO_toggle(Board_GPIO_GLED);
+        GPIO_toggle(Board_GPIO_RLED);
         CPUdelay(8000 * (1000));
-        GPIO_toggle(Board_GPIO_GLED);
+        GPIO_toggle(Board_GPIO_RLED);
         CPUdelay(8000 * (1000));
 
         break;

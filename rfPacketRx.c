@@ -162,9 +162,9 @@ void* mainThread(void *arg0)
 #endif// DeviceFamily_CC26X0R2
 
 
-   // uint32_t epoch = getEpoch();
-   // Seconds_set(epoch);
-    Seconds_set(1654100815);
+    uint32_t epoch = getEpoch();
+    Seconds_set(epoch);
+  //   Seconds_set(1654100815);
 
     createTxtFileOnSD();
 
@@ -232,14 +232,14 @@ void* mainThread(void *arg0)
                 {
                     errorBlinkCase(4);
                 }
-
                 if(resultCrc == 1)
                 {
-                    calculatedData = calculateSeven();
+                   calculatedData = calculateSeven();
                 }
             }
 
-
+            if(resultCrc == 1)
+            {
             /* get time */
             t1 = time(NULL);
             /* put result in t struct */
@@ -249,8 +249,8 @@ void* mainThread(void *arg0)
 
             /* TODO: make getters for filename so user can customize filename. For test purposes files are named LOG.txt
              * TODO: Make getter for timestamp so it can be removed from main
-             * TODO: Make getter for ID in corresponding lib. For now it is called getIDTemp as it is a temporary function.
              */
+
 
             /* get ID, data type and unit*/
             idReturned = getId();
@@ -262,15 +262,31 @@ void* mainThread(void *arg0)
             int cx;
 
             /*Open file*/
-            fr = f_open(&fsrc, "LOG.txt", FA_OPEN_APPEND | FA_WRITE);
+               fr = f_open(&fsrc, "LOG.txt", FA_OPEN_APPEND | FA_WRITE);
 
             /* Write JSON to buffer
              * TODO: PCB halts when trying to write double (%0.2f). Figure out solution
              * */
 
-            cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Value\":%0.2f\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,",
+            uint32_t int_num = 0;
+            float temp_dec = 0;
+            uint32_t int_dec = 0;
+            if(type!="CO2")
+            {
+
+                int_num = calculatedData; /* Get the whole number of the decimal */
+                temp_dec = calculatedData - int_num;
+                temp_dec *= 100;
+                temp_dec = roundf(temp_dec);
+                int_dec = temp_dec;
+
+            }
+
+
+            cx = snprintf(bufferToSD, sizeof(bufferToSD),"\{\"Id\":%d\,\"Value\":%d\.%d\,\"Unit\":\"%s\"\,\"Type\":\"%s\"\,\"TimeStamp\":\"%d-%02d-%02dT%02d:%02d:%02d\"\}\,",
                                                           idReturned,
-                                                          calculatedData,
+                                                          int_num,
+                                                          int_dec,
                                                           unit,
                                                           type,
                                                           (t.tm_year+1900),
@@ -284,7 +300,9 @@ void* mainThread(void *arg0)
             /*Write buffer to file and close */
             fr = f_write(&fsrc, bufferToSD, cx, &bw);
             fr = f_close(&fsrc);
-            errorBlinkCase(5);
+
+             errorBlinkCase(5);
+            }
     }
 
 }

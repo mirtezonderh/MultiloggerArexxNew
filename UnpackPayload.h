@@ -5,7 +5,8 @@
 #include<stdio.h>
 #include<string.h>
 #include <stdint.h>
-
+#include <string.h>
+#include <xdc/std.h>
 
 uint8_t unpackFiveCRC(uint8_t packetbuff[]);
 uint8_t unpackSevenCRC(uint8_t packetbuff[]);

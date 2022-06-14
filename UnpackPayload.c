@@ -67,8 +67,6 @@ double calculateFive()
 {
 
     double DataCalc = 0;
-    double degC = 0;
-    double hum = 0;
     DATA_FULL = 0;
     ID_FULL = 0;
     temp_id5 = 0;
@@ -171,6 +169,7 @@ uint8_t unpackSevenCRC(uint8_t packetbuff[])
 
 double calculateSeven()
 {
+
     String type;
     String unit;
     double DataCalc = 0;
@@ -231,6 +230,7 @@ double calculateSeven()
                     DataCalc = hum;
                     type = "RH";
                     unit = "%";
+
                 }
 
             /* if last bit of ID is 0, data is humidity */
@@ -242,6 +242,7 @@ double calculateSeven()
                     DataCalc = degC;
                     type = "Temp";
                     unit = "C";
+
                 }
                 break;
 
@@ -265,6 +266,7 @@ double calculateSeven()
             DataCalc = degC;
             type = "Temp";
             unit = "C";
+
                 break;
 
         case 240: //F0, Battery voltage
@@ -274,15 +276,55 @@ double calculateSeven()
             DataCalc = vbat;
             type = "Volt";
             unit = "V";
+
                 break;
+
+        case 112: //0x70, SHT40 temp
+            DataCalc = DATA_FULL;
+            DataCalc = -45 + (175* (DataCalc/65535));
+            type = "Temp";
+            unit = "C";
+
+            break;
+        case 113: //0x71, SHT40 Hum
+            DataCalc = DATA_FULL;
+            DataCalc = -6 + (125* (DataCalc/65535));
+            type = "RH";
+            unit = "%";
+
+            break;
+
+        case 128:// 0x80, SCD41 TEMP
+            DataCalc = DATA_FULL;
+            DataCalc = -45 + (175* (DataCalc/65535));
+            type = "Temp";
+            unit = "C";
+
+            break;
+        case 129: //0x81, SCD41 HUM
+            DataCalc = DATA_FULL;
+            DataCalc = 100*(DataCalc/65535);
+            type = "RH";
+            unit = "%";
+            break;
+        case 130: //0x82 SCD41 CO2
+            DataCalc = DATA_FULL;
+            type = "CO2";
+            unit = "PPM";
+            break;
+
+
 
         default:
             /* Uknown type*/
-            DataCalc = 9999;
+            DataCalc = 101;
             type = "Unknown";
             unit = "Unknown";
                 break;
 
+    }
+    if(DataCalc < 0){
+        DataCalc = 0;
     }
     setType(type);
     setUnit(unit);
